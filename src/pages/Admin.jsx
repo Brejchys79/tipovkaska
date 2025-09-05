@@ -41,6 +41,7 @@ export default function AdminProtected() {
       await updateDoc(doc(db, 'matches', m.id), { 
         result: res.score.trim(), 
         scorer: res.scorer ? res.scorer.trim() : null 
+        evaluated: true
       })
 
       // načteme tipy na tento zápas
