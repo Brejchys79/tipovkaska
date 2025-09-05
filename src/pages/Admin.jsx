@@ -2,17 +2,31 @@ import React, { useEffect, useState } from 'react'
 import { db } from '../services/firebase'
 import { collection, getDocs, updateDoc, doc } from 'firebase/firestore'
 
-export default function Admin() {
+export default function AdminProtected() {
+  const [authorized, setAuthorized] = useState(false)
+  const [passwordInput, setPasswordInput] = useState('')
+
+  // Stav pro admin stránku
   const [matches, setMatches] = useState([])
   const [results, setResults] = useState({})
   const [loading, setLoading] = useState(false)
 
+  const ADMIN_PASSWORD = 'Dynamo79' // nastav si své heslo
+
+  const checkPassword = () => {
+    if (passwordInput === ADMIN_PASSWORD) setAuthorized(true)
+    else alert('Špatné heslo!')
+  }
+
+  // Funkce pro načtení zápasů
   const load = async () => {
     const snap = await getDocs(collection(db, 'matches'))
     setMatches(snap.docs.map(d => ({ id: d.id, ...d.data() })))
   }
 
-  useEffect(() => { load() }, [])
+  useEffect(() => {
+    if (authorized) load()
+  }, [authorized])
 
   const handleChange = (matchId, field, value) => {
     setResults(prev => ({ ...prev, [matchId]: { ...(prev[matchId] || {}), [field]: value } }))
@@ -59,6 +73,24 @@ export default function Admin() {
     setLoading(false)
   }
 
+  // Pokud není autorizace, zobraz login
+  if (!authorized) {
+    return (
+      <div className="card">
+        <h2>Přihlášení do administrace</h2>
+        <input
+          type="password"
+          className="input"
+          placeholder="Heslo"
+          value={passwordInput}
+          onChange={e => setPasswordInput(e.target.value)}
+        />
+        <button className="btn" onClick={checkPassword}>Přihlásit</button>
+      </div>
+    )
+  }
+
+  // Zobrazení admin stránky
   return (
     <div className="grid">
       {matches.map(m => (
