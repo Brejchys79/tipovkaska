@@ -37,11 +37,11 @@ export default function AdminProtected() {
     if (!res || !res.score) { alert('Zadej výsledek!'); return }
     setLoading(true)
     try {
-      // uložíme výsledek do zápasu
+      // uložíme výsledek do zápasu a označíme ho jako vyhodnocený
       await updateDoc(doc(db, 'matches', m.id), { 
         result: res.score.trim(), 
-        scorer: res.scorer ? res.scorer.trim() : null 
-        evaluated: true
+        scorer: res.scorer ? res.scorer.trim() : null,
+        evaluated: true // ⬅️ nový příznak
       })
 
       // načteme tipy na tento zápas
