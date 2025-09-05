@@ -1,22 +1,22 @@
 import React, { useEffect, useState } from 'react'
 import { db } from '../services/firebase'
-import { collection, getDocs, setDoc, doc, serverTimestamp } from 'firebase/firestore'
+import { collection, setDoc, doc, serverTimestamp, onSnapshot } from 'firebase/firestore'
 
-const PLAYERS = ['Kuba', 'Dominik', 'Michal']
+const PLAYERS = ['Kuba', 'Dominik', 'Michal', 'Ondra',, 'Adéla',]
 
 export default function Home() {
   const [user, setUser] = useState(PLAYERS[0])
   const [matches, setMatches] = useState([])
   const [tips, setTips] = useState({})
-  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    (async () => {
-      const snap = await getDocs(collection(db, 'matches'))
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+    // realtime listener pro zápasy
+    const unsub = onSnapshot(collection(db, 'matches'), snapshot => {
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
       setMatches(list)
-      setLoading(false)
-    })()
+    })
+
+    return () => unsub() // cleanup při odchodu ze stránky
   }, [])
 
   const handleChange = (matchId, field, value) => {
@@ -27,7 +27,8 @@ export default function Home() {
     const ops = Object.entries(tips).map(([matchId, t]) => {
       const tipId = `${user}_${matchId}` // upsert per user+match
       return setDoc(doc(db, 'tips', tipId), {
-        user, matchId,
+        user,
+        matchId,
         score: (t.score || '').trim(),
         scorer: (t.scorer || '').trim(),
         createdAt: serverTimestamp()
@@ -38,14 +39,14 @@ export default function Home() {
     setTips({})
   }
 
-  if (loading) return <p>Načítám...</p>
+  if (!matches.length) return <p>Načítám zápasy...</p>
 
   return (
     <div className="space-y">
       <div className="card">
         <div className="row">
           <label>Vyber jméno:</label>
-          <select value={user} onChange={e=>setUser(e.target.value)}>
+          <select value={user} onChange={e => setUser(e.target.value)}>
             {PLAYERS.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
         </div>
@@ -55,15 +56,21 @@ export default function Home() {
       <div className="grid">
         {matches.map(m => (
           <div key={m.id} className="card">
-            <div className="row" style={{justifyContent:'space-between'}}>
+            <div className="row" style={{ justifyContent: 'space-between' }}>
               <strong>{m.teamA} vs {m.teamB}</strong>
               {m.isSpecial ? <span className="tag">Zápas kola</span> : null}
             </div>
             <div className="row">
-              <input className="input" placeholder="Výsledek např. 2:1"
-                onChange={e=>handleChange(m.id,'score',e.target.value)} />
-              <input className="input" placeholder="Střelec"
-                onChange={e=>handleChange(m.id,'scorer',e.target.value)} />
+              <input
+                className="input"
+                placeholder="Výsledek např. 2:1"
+                onChange={e => handleChange(m.id, 'score', e.target.value)}
+              />
+              <input
+                className="input"
+                placeholder="Střelec"
+                onChange={e => handleChange(m.id, 'scorer', e.target.value)}
+              />
             </div>
           </div>
         ))}
