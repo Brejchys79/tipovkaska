@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { db } from '../services/firebase'
 import { collection, setDoc, doc, serverTimestamp, onSnapshot } from 'firebase/firestore'
 
-const PLAYERS = ['Kuba', 'Dominik', 'Michal', 'Ondra', 'Adéla']
+const PLAYERS = ['Kuba', 'Dominik', 'Michal', 'Ondra', 'Adéla', 'Šimon']
 
 export default function Home() {
   const [user, setUser] = useState(PLAYERS[0])
