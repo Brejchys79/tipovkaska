@@ -1,22 +1,32 @@
 import React, { useEffect, useState } from 'react'
 import { db } from '../services/firebase'
-import { collection, getDocs } from 'firebase/firestore'
+import { collection, onSnapshot } from 'firebase/firestore'
 
 export default function TipsOverview() {
   const [tips, setTips] = useState([])
 
-  useEffect(()=>{
-    (async () => {
-      const snap = await getDocs(collection(db, 'tips'))
-      setTips(snap.docs.map(d=>({ id:d.id, ...d.data() })))
-    })()
+  useEffect(() => {
+    // realtime listener pro tipy
+    const unsub = onSnapshot(collection(db, 'tips'), snapshot => {
+      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+      setTips(list)
+    })
+
+    return () => unsub() // cleanup listener při odchodu ze stránky
   }, [])
 
   return (
     <div className="card">
       <h2>Přehled tipů</h2>
       <table className="table">
-        <thead><tr><th>Uživatel</th><th>Zápas</th><th>Tip</th><th>Střelec</th></tr></thead>
+        <thead>
+          <tr>
+            <th>Uživatel</th>
+            <th>Zápas</th>
+            <th>Tip</th>
+            <th>Střelec</th>
+          </tr>
+        </thead>
         <tbody>
           {tips.map(t => (
             <tr key={t.id}>
@@ -28,7 +38,9 @@ export default function TipsOverview() {
           ))}
         </tbody>
       </table>
-      <p className="muted">Pozn.: Název zápasu můžeš dohledat v administraci. (Pro zobrazení názvu by se musel dělat join víc dotazů.)</p>
+      <p className="muted">
+        Pozn.: Název zápasu můžeš dohledat v administraci. (Pro zobrazení názvu by se musel dělat join víc dotazů.)
+      </p>
     </div>
   )
 }
