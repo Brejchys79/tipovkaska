@@ -4,15 +4,28 @@ import { collection, onSnapshot } from 'firebase/firestore'
 
 export default function TipsOverview() {
   const [tips, setTips] = useState([])
+  const [matches, setMatches] = useState({}) // objekt {matchId: zápas}
 
   useEffect(() => {
     // realtime listener pro tipy
-    const unsub = onSnapshot(collection(db, 'tips'), snapshot => {
+    const unsubTips = onSnapshot(collection(db, 'tips'), snapshot => {
       const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
       setTips(list)
     })
 
-    return () => unsub() // cleanup listener při odchodu ze stránky
+    // realtime listener pro zápasy
+    const unsubMatches = onSnapshot(collection(db, 'matches'), snapshot => {
+      const obj = {}
+      snapshot.docs.forEach(d => {
+        obj[d.id] = d.data()
+      })
+      setMatches(obj)
+    })
+
+    return () => {
+      unsubTips()
+      unsubMatches()
+    }
   }, [])
 
   return (
@@ -28,18 +41,22 @@ export default function TipsOverview() {
           </tr>
         </thead>
         <tbody>
-          {tips.map(t => (
-            <tr key={t.id}>
-              <td>{t.user}</td>
-              <td>{t.matchId}</td>
-              <td>{t.score || '-'}</td>
-              <td>{t.scorer || '-'}</td>
-            </tr>
-          ))}
+          {tips.map(t => {
+            const match = matches[t.matchId]
+            const matchName = match ? `${match.teamA} vs ${match.teamB}` : t.matchId
+            return (
+              <tr key={t.id}>
+                <td>{t.user}</td>
+                <td>{matchName}</td>
+                <td>{t.score || '-'}</td>
+                <td>{t.scorer || '-'}</td>
+              </tr>
+            )
+          })}
         </tbody>
       </table>
       <p className="muted">
-        Pozn.: Název zápasu můžeš dohledat v administraci. (Pro zobrazení názvu by se musel dělat join víc dotazů.)
+        Pozn.: Pokud zápas neexistuje, zobrazí se ID.
       </p>
     </div>
   )
