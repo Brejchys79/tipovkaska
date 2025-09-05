@@ -38,25 +38,32 @@ export default function TipsOverview() {
             <th>Zápas</th>
             <th>Tip</th>
             <th>Střelec</th>
+            <th>Datum a čas</th>
           </tr>
         </thead>
         <tbody>
           {tips.map(t => {
             const match = matches[t.matchId]
             const matchName = match ? `${match.teamA} vs ${match.teamB}` : t.matchId
+
+            // převod Firestore Timestamp -> Date
+            const date = t.createdAt?.toDate ? t.createdAt.toDate() : null
+            const formattedDate = date ? date.toLocaleString('cs-CZ') : '-'
+
             return (
               <tr key={t.id}>
                 <td>{t.user}</td>
                 <td>{matchName}</td>
                 <td>{t.score || '-'}</td>
                 <td>{t.scorer || '-'}</td>
+                <td>{formattedDate}</td>
               </tr>
             )
           })}
         </tbody>
       </table>
       <p className="muted">
-        Pozn.: Pokud zápas neexistuje, zobrazí se ID.
+        Pozn.: Pokud zápas neexistuje, zobrazí se ID. Pokud tip nemá datum, zobrazí se „-”.
       </p>
     </div>
   )
