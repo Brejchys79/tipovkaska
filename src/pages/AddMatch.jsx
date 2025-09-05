@@ -16,7 +16,7 @@ export default function AddMatch() {
 
     setLoading(true)
     try {
-      await addDoc(collection(db, 'matches'), {
+      const docRef = await addDoc(collection(db, 'matches'), {
         teamA: teamA.trim(),
         teamB: teamB.trim(),
         isSpecial,
@@ -24,16 +24,20 @@ export default function AddMatch() {
         scorer: null,
         createdAt: serverTimestamp()
       })
+
+      // alert teprve po úspěšném uložení
+      alert(`Zápas přidán! ID: ${docRef.id}`)
+
       // vyčistit inputy
       setTeamA('')
       setTeamB('')
       setIsSpecial(false)
-      alert('Zápas přidán! 😊')
     } catch (err) {
-      console.error(err)
-      alert('Chyba při přidávání zápasu.')
+      console.error('Chyba při přidávání zápasu:', err)
+      alert('Chyba při přidávání zápasu: ' + err.message)
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (
@@ -64,7 +68,7 @@ export default function AddMatch() {
       </label>
 
       <button className="btn" onClick={add} disabled={loading}>
-        {loading ? 'Přidávám...' : 'Přidat zápas'}
+        {loading ? 'Přidávám…' : 'Přidat zápas'}
       </button>
     </div>
   )
