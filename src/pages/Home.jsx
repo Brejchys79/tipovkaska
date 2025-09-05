@@ -14,18 +14,32 @@ export default function Home() {
     const unsub = onSnapshot(collection(db, 'matches'), snapshot => {
       const list = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(m => !m.evaluated) // ⬅️ jen zápasy bez vyhodnocení
+        .filter(m => !m.evaluated) // jen zápasy bez vyhodnocení
+        .sort((a, b) => {
+          const da = a.matchDateTime ? new Date(a.matchDateTime).getTime() : 0
+          const dbt = b.matchDateTime ? new Date(b.matchDateTime).getTime() : 0
+          return da - dbt
+        })
       setMatches(list)
     })
     return () => unsub()
   }, [])
 
   const handleChange = (matchId, field, value) => {
-    setTips(prev => ({ ...prev, [matchId]: { ...(prev[matchId]||{}), [field]: value }}))
+    setTips(prev => ({ ...prev, [matchId]: { ...(prev[matchId] || {}), [field]: value }}))
   }
 
   const saveAll = async () => {
+    const now = new Date()
     const ops = Object.entries(tips).map(([matchId, t]) => {
+      const match = matches.find(m => m.id === matchId)
+      if (!match) return null
+
+      // pokud už zápas začal, tip se neuloží
+      if (match.matchDateTime && new Date(match.matchDateTime) <= now) {
+        return null
+      }
+
       const tipId = `${user}_${matchId}` // upsert per user+match
       return setDoc(doc(db, 'tips', tipId), {
         user,
@@ -34,13 +48,16 @@ export default function Home() {
         scorer: (t.scorer || '').trim(),
         createdAt: serverTimestamp()
       }, { merge: true })
-    })
+    }).filter(Boolean)
+
     await Promise.all(ops)
     alert('Tipy uloženy!')
     setTips({})
   }
 
   if (!matches.length) return <p>Načítám zápasy...</p>
+
+  const now = new Date()
 
   return (
     <div className="space-y">
@@ -55,27 +72,37 @@ export default function Home() {
       </div>
 
       <div className="grid">
-        {matches.map(m => (
-          <div key={m.id} className="card">
-            <div className="row" style={{ justifyContent: 'space-between' }}>
-              <strong>
-                {m.teamA} vs {m.teamB} {m.isSpecial ? '⭐' : ''}
-              </strong>
+        {matches.map(m => {
+          const isClosed = m.matchDateTime && new Date(m.matchDateTime) <= now
+          return (
+            <div key={m.id} className="card">
+              <div className="row" style={{ justifyContent: 'space-between' }}>
+                <strong>
+                  {m.teamA} vs {m.teamB} {m.isSpecial ? '⭐' : ''}
+                </strong>
+              </div>
+              <p className="muted">
+                Datum: {m.matchDateTime ? new Date(m.matchDateTime).toLocaleString('cs-CZ') : 'neuvedeno'}
+              </p>
+              {isClosed ? (
+                <p className="muted">Tipování uzavřeno</p>
+              ) : (
+                <div className="row">
+                  <input
+                    className="input"
+                    placeholder="Výsledek např. 2:1"
+                    onChange={e => handleChange(m.id, 'score', e.target.value)}
+                  />
+                  <input
+                    className="input"
+                    placeholder="Střelec"
+                    onChange={e => handleChange(m.id, 'scorer', e.target.value)}
+                  />
+                </div>
+              )}
             </div>
-            <div className="row">
-              <input
-                className="input"
-                placeholder="Výsledek např. 2:1"
-                onChange={e => handleChange(m.id, 'score', e.target.value)}
-              />
-              <input
-                className="input"
-                placeholder="Střelec"
-                onChange={e => handleChange(m.id, 'scorer', e.target.value)}
-              />
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       <button className="btn" onClick={saveAll}>Uložit tipy</button>
