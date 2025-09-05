@@ -2,23 +2,23 @@ import React, { useEffect, useState } from 'react'
 import { db } from '../services/firebase'
 import { collection, setDoc, doc, serverTimestamp, onSnapshot } from 'firebase/firestore'
 
-const PLAYERS = ['Kuba', 'Dominik', 'Michal', 'Ondra',, 'Adéla',]
+const PLAYERS = ['Kuba', 'Dominik', 'Michal', 'Ondra', 'Adéla']
 
 export default function Home() {
   const [user, setUser] = useState(PLAYERS[0])
   const [matches, setMatches] = useState([])
   const [tips, setTips] = useState({})
 
-  // Realtime listener pro zápasy
+  // Realtime listener pro zápasy – zobrazujeme jen nevyhodnocené
   useEffect(() => {
-   const unsub = onSnapshot(collection(db, 'matches'), snapshot => {
-    const list = snapshot.docs
-      .map(d => ({ id: d.id, ...d.data() }))
-      .filter(m => !m.evaluated) // ⬅️ jen nevyhodnocené zápasy
-    setMatches(list)
-  })
-  return () => unsub()
-}, [])
+    const unsub = onSnapshot(collection(db, 'matches'), snapshot => {
+      const list = snapshot.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(m => !m.evaluated) // ⬅️ jen zápasy bez vyhodnocení
+      setMatches(list)
+    })
+    return () => unsub()
+  }, [])
 
   const handleChange = (matchId, field, value) => {
     setTips(prev => ({ ...prev, [matchId]: { ...(prev[matchId]||{}), [field]: value }}))
