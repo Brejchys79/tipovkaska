@@ -11,12 +11,14 @@ export default function Home() {
 
   // Realtime listener pro zápasy
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'matches'), snapshot => {
-      const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
-      setMatches(list)
-    })
-    return () => unsub()
-  }, [])
+   const unsub = onSnapshot(collection(db, 'matches'), snapshot => {
+    const list = snapshot.docs
+      .map(d => ({ id: d.id, ...d.data() }))
+      .filter(m => !m.evaluated) // ⬅️ jen nevyhodnocené zápasy
+    setMatches(list)
+  })
+  return () => unsub()
+}, [])
 
   const handleChange = (matchId, field, value) => {
     setTips(prev => ({ ...prev, [matchId]: { ...(prev[matchId]||{}), [field]: value }}))
