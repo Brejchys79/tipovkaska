@@ -5,12 +5,13 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 export default function AddMatch() {
   const [teamA, setTeamA] = useState('')
   const [teamB, setTeamB] = useState('')
+  const [matchDateTime, setMatchDateTime] = useState('') // nový state
   const [isSpecial, setIsSpecial] = useState(false)
   const [loading, setLoading] = useState(false)
 
   const add = async () => {
-    if (!teamA.trim() || !teamB.trim()) {
-      alert('Vyplň oba týmy.')
+    if (!teamA.trim() || !teamB.trim() || !matchDateTime) {
+      alert('Vyplň oba týmy a datum zápasu.')
       return
     }
 
@@ -19,18 +20,20 @@ export default function AddMatch() {
       const docRef = await addDoc(collection(db, 'matches'), {
         teamA: teamA.trim(),
         teamB: teamB.trim(),
+        matchDateTime, // uložení do DB
         isSpecial,
         result: null,
         scorer: null,
-        createdAt: serverTimestamp()
+        createdAt: serverTimestamp(),
+        evaluated: false
       })
 
-      // alert teprve po úspěšném uložení
       alert(`Zápas přidán! ID: ${docRef.id}`)
 
-      // vyčistit inputy
+      // reset formuláře
       setTeamA('')
       setTeamB('')
+      setMatchDateTime('')
       setIsSpecial(false)
     } catch (err) {
       console.error('Chyba při přidávání zápasu:', err)
@@ -58,6 +61,18 @@ export default function AddMatch() {
         onChange={e => setTeamB(e.target.value)}
         disabled={loading}
       />
+
+      <label>
+        Datum a čas zápasu:
+        <input
+          type="datetime-local"
+          className="input"
+          value={matchDateTime}
+          onChange={e => setMatchDateTime(e.target.value)}
+          disabled={loading}
+        />
+      </label>
+
       <label className="row">
         <input
           type="checkbox"
