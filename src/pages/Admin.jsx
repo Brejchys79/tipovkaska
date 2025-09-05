@@ -1,90 +1,155 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { db } from '../services/firebase'
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, getDocs, updateDoc, doc } from 'firebase/firestore'
 
-export default function AddMatch() {
-  const [teamA, setTeamA] = useState('')
-  const [teamB, setTeamB] = useState('')
-  const [matchDateTime, setMatchDateTime] = useState('') // nový state
-  const [isSpecial, setIsSpecial] = useState(false)
+export default function AdminProtected() {
+  const [authorized, setAuthorized] = useState(false)
+  const [passwordInput, setPasswordInput] = useState('')
+
+  // Stav pro admin stránku
+  const [matches, setMatches] = useState([])
+  const [results, setResults] = useState({})
   const [loading, setLoading] = useState(false)
 
-  const add = async () => {
-    if (!teamA.trim() || !teamB.trim() || !matchDateTime) {
-      alert('Vyplň oba týmy a datum zápasu.')
-      return
-    }
+  const ADMIN_PASSWORD = 'Dynamo79' // nastav si své heslo
 
-    setLoading(true)
-    try {
-      const docRef = await addDoc(collection(db, 'matches'), {
-        teamA: teamA.trim(),
-        teamB: teamB.trim(),
-        matchDateTime, // uložení do DB
-        isSpecial,
-        result: null,
-        scorer: null,
-        createdAt: serverTimestamp(),
-        evaluated: false
-      })
-
-      alert(`Zápas přidán! ID: ${docRef.id}`)
-
-      // reset formuláře
-      setTeamA('')
-      setTeamB('')
-      setMatchDateTime('')
-      setIsSpecial(false)
-    } catch (err) {
-      console.error('Chyba při přidávání zápasu:', err)
-      alert('Chyba při přidávání zápasu: ' + err.message)
-    } finally {
-      setLoading(false)
-    }
+  const checkPassword = () => {
+    if (passwordInput === ADMIN_PASSWORD) setAuthorized(true)
+    else alert('Špatné heslo!')
   }
 
-  return (
-    <div className="card space-y">
-      <h2>Přidání zápasu</h2>
+  // Funkce pro načtení zápasů
+  const load = async () => {
+    const snap = await getDocs(collection(db, 'matches'))
+    setMatches(snap.docs.map(d => ({ id: d.id, ...d.data() })))
+  }
 
-      <input
-        className="input"
-        placeholder="Tým A"
-        value={teamA}
-        onChange={e => setTeamA(e.target.value)}
-        disabled={loading}
-      />
-      <input
-        className="input"
-        placeholder="Tým B"
-        value={teamB}
-        onChange={e => setTeamB(e.target.value)}
-        disabled={loading}
-      />
+  useEffect(() => {
+    if (authorized) load()
+  }, [authorized])
 
-      <label>
-        Datum a čas zápasu:
+  const handleChange = (matchId, field, value) => {
+    setResults(prev => ({
+      ...prev,
+      [matchId]: { ...(prev[matchId] || {}), [field]: value }
+    }))
+  }
+
+  const evaluateMatch = async (m) => {
+    const res = results[m.id]
+    if (!res || !res.score) {
+      alert('Zadej výsledek!')
+      return
+    }
+    setLoading(true)
+    try {
+      // uložíme výsledek do zápasu (+ datum/čas pokud je vyplněný)
+      await updateDoc(doc(db, 'matches', m.id), {
+        result: res.score.trim(),
+        scorer: res.scorer ? res.scorer.trim() : null,
+        matchDateTime: res.matchDateTime || m.matchDateTime || null,
+        evaluated: true
+      })
+
+      // načteme tipy na tento zápas
+      const tipsSnap = await getDocs(collection(db, 'tips'))
+      const matchTips = tipsSnap.docs
+        .map(d => ({ id: d.id, ...d.data() }))
+        .filter(t => t.matchId === m.id)
+
+      const ops = matchTips.map(async tip => {
+        let points = 0
+        const [realA, realB] = res.score.trim().split(':').map(Number)
+        const [tipA, tipB] = tip.score ? tip.score.split(':').map(Number) : [null, null]
+
+        if (tipA !== null && tipB !== null) {
+          if (tipA === realA && tipB === realB) points += 5
+          else if (
+            (tipA > tipB && realA > realB) ||
+            (tipA < tipB && realA < realB) ||
+            (tipA === tipB && realA === realB)
+          ) points += 3
+        }
+
+        if (res.scorer && tip.scorer && res.scorer.toLowerCase() === tip.scorer.toLowerCase()) points += 3
+        if (m.isSpecial) points += 3
+
+        await updateDoc(doc(db, 'tips', tip.id), { points })
+      })
+
+      await Promise.all(ops)
+      alert(`Zápas "${m.teamA} vs ${m.teamB}" vyhodnocen!`)
+      await load()
+    } catch (err) {
+      console.error(err)
+      alert('Chyba při vyhodnocení: ' + err.message)
+    }
+    setLoading(false)
+  }
+
+  // Pokud není autorizace, zobraz login
+  if (!authorized) {
+    return (
+      <div className="card">
+        <h2>Přihlášení do administrace</h2>
         <input
-          type="datetime-local"
+          type="password"
           className="input"
-          value={matchDateTime}
-          onChange={e => setMatchDateTime(e.target.value)}
-          disabled={loading}
+          placeholder="Heslo"
+          value={passwordInput}
+          onChange={e => setPasswordInput(e.target.value)}
         />
-      </label>
+        <button className="btn" onClick={checkPassword}>Přihlásit</button>
+      </div>
+    )
+  }
 
-      <label className="row">
-        <input
-          type="checkbox"
-          checked={isSpecial}
-          onChange={e => setIsSpecial(e.target.checked)}
-          disabled={loading}
-        /> Zápas kola
-      </label>
+  // Zobrazení admin stránky
+  return (
+    <div className="grid">
+      {matches.map(m => (
+        <div key={m.id} className="card space-y">
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <strong>{m.teamA} vs {m.teamB}</strong>
+            {m.isSpecial ? <span className="tag">Zápas kola</span> : null}
+          </div>
 
-      <button className="btn" onClick={add} disabled={loading}>
-        {loading ? 'Přidávám…' : 'Přidat zápas'}
-      </button>
+          <p className="muted">
+            Aktuální čas: {m.matchDateTime ? new Date(m.matchDateTime).toLocaleString('cs-CZ') : 'neuvedeno'}
+          </p>
+
+          <div className="row">
+            <input
+              type="datetime-local"
+              className="input"
+              value={results[m.id]?.matchDateTime || m.matchDateTime || ''}
+              onChange={e => handleChange(m.id, 'matchDateTime', e.target.value)}
+              disabled={loading}
+            />
+          </div>
+
+          <div className="row">
+            <input
+              className="input"
+              placeholder="Výsledek např. 2:1"
+              value={results[m.id]?.score || m.result || ''}
+              onChange={e => handleChange(m.id, 'score', e.target.value)}
+              disabled={loading}
+            />
+            <input
+              className="input"
+              placeholder="Střelec"
+              value={results[m.id]?.scorer || m.scorer || ''}
+              onChange={e => handleChange(m.id, 'scorer', e.target.value)}
+              disabled={loading}
+            />
+            <button className="btn" onClick={() => evaluateMatch(m)} disabled={loading}>
+              {loading ? 'Vyhodnocuji…' : 'Vyhodnotit zápas'}
+            </button>
+          </div>
+          <p className="muted">Vyhodnocení provede výpočet bodů pro všechny tipy.</p>
+        </div>
+      ))}
     </div>
   )
 }
