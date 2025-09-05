@@ -9,14 +9,13 @@ export default function Home() {
   const [matches, setMatches] = useState([])
   const [tips, setTips] = useState({})
 
+  // Realtime listener pro zápasy
   useEffect(() => {
-    // realtime listener pro zápasy
     const unsub = onSnapshot(collection(db, 'matches'), snapshot => {
       const list = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
       setMatches(list)
     })
-
-    return () => unsub() // cleanup při odchodu ze stránky
+    return () => unsub()
   }, [])
 
   const handleChange = (matchId, field, value) => {
@@ -57,8 +56,9 @@ export default function Home() {
         {matches.map(m => (
           <div key={m.id} className="card">
             <div className="row" style={{ justifyContent: 'space-between' }}>
-              <strong>{m.teamA} vs {m.teamB}</strong>
-              {m.isSpecial ? <span className="tag">Zápas kola</span> : null}
+              <strong>
+                {m.teamA} vs {m.teamB} {m.isSpecial ? '⭐' : ''}
+              </strong>
             </div>
             <div className="row">
               <input
