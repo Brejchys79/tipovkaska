@@ -1,15 +1,19 @@
 import React, { useEffect, useState } from 'react'
 import { db } from '../services/firebase'
-import { collection, getDocs, updateDoc, doc } from 'firebase/firestore'
+import { collection, getDocs, updateDoc, doc, addDoc } from 'firebase/firestore'
 
 export default function AdminProtected() {
   const [authorized, setAuthorized] = useState(false)
   const [passwordInput, setPasswordInput] = useState('')
 
-  // Stav pro admin stránku
   const [matches, setMatches] = useState([])
   const [results, setResults] = useState({})
   const [loading, setLoading] = useState(false)
+
+  // pro extra body
+  const [extraUser, setExtraUser] = useState('')
+  const [extraPoints, setExtraPoints] = useState('')
+  const [extraReason, setExtraReason] = useState('')
 
   const ADMIN_PASSWORD = 'Dynamo79' // nastav si své heslo
 
@@ -18,7 +22,6 @@ export default function AdminProtected() {
     else alert('Špatné heslo!')
   }
 
-  // Funkce pro načtení zápasů
   const load = async () => {
     const snap = await getDocs(collection(db, 'matches'))
     setMatches(snap.docs.map(d => ({ id: d.id, ...d.data() })))
@@ -37,14 +40,12 @@ export default function AdminProtected() {
     if (!res || !res.score) { alert('Zadej výsledek!'); return }
     setLoading(true)
     try {
-      // uložíme výsledek do zápasu a označíme ho jako vyhodnocený
-      await updateDoc(doc(db, 'matches', m.id), { 
-        result: res.score.trim(), 
+      await updateDoc(doc(db, 'matches', m.id), {
+        result: res.score.trim(),
         scorer: res.scorer ? res.scorer.trim() : null,
-        evaluated: true // ⬅️ nový příznak
+        evaluated: true
       })
 
-      // načteme tipy na tento zápas
       const tipsSnap = await getDocs(collection(db, 'tips'))
       const matchTips = tipsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.matchId === m.id)
 
@@ -74,7 +75,27 @@ export default function AdminProtected() {
     setLoading(false)
   }
 
-  // Pokud není autorizace, zobraz login
+  const addExtraPoints = async () => {
+    if (!extraUser || !extraPoints) {
+      alert('Vyplň uživatele i body'); return
+    }
+    try {
+      await addDoc(collection(db, 'manualPoints'), {
+        user: extraUser.trim(),
+        points: parseInt(extraPoints, 10),
+        reason: extraReason.trim(),
+        createdAt: new Date()
+      })
+      alert(`Přidáno ${extraPoints} bodů uživateli ${extraUser}`)
+      setExtraUser('')
+      setExtraPoints('')
+      setExtraReason('')
+    } catch (err) {
+      console.error(err)
+      alert('Chyba při ukládání: ' + err.message)
+    }
+  }
+
   if (!authorized) {
     return (
       <div className="card">
@@ -91,31 +112,41 @@ export default function AdminProtected() {
     )
   }
 
-  // Zobrazení admin stránky
   return (
     <div className="grid">
       {matches.map(m => (
         <div key={m.id} className="card space-y">
-          <div className="row" style={{justifyContent:'space-between'}}>
+          <div className="row" style={{ justifyContent: 'space-between' }}>
             <strong>{m.teamA} vs {m.teamB}</strong>
             {m.isSpecial ? <span className="tag">Zápas kola</span> : null}
           </div>
           <div className="row">
             <input className="input" placeholder="Výsledek např. 2:1"
-                   value={results[m.id]?.score || m.result || ''}
-                   onChange={e=>handleChange(m.id, 'score', e.target.value)}
-                   disabled={loading}/>
+              value={results[m.id]?.score || m.result || ''}
+              onChange={e => handleChange(m.id, 'score', e.target.value)}
+              disabled={loading} />
             <input className="input" placeholder="Střelec"
-                   value={results[m.id]?.scorer || m.scorer || ''}
-                   onChange={e=>handleChange(m.id, 'scorer', e.target.value)}
-                   disabled={loading}/>
-            <button className="btn" onClick={()=>evaluateMatch(m)} disabled={loading}>
+              value={results[m.id]?.scorer || m.scorer || ''}
+              onChange={e => handleChange(m.id, 'scorer', e.target.value)}
+              disabled={loading} />
+            <button className="btn" onClick={() => evaluateMatch(m)} disabled={loading}>
               {loading ? 'Vyhodnocuji…' : 'Vyhodnotit zápas'}
             </button>
           </div>
           <p className="muted">Vyhodnocení provede výpočet bodů pro všechny tipy.</p>
         </div>
       ))}
+
+      <div className="card">
+        <h3>Přidat body ručně</h3>
+        <input className="input" placeholder="Uživatel"
+          value={extraUser} onChange={e => setExtraUser(e.target.value)} />
+        <input className="input" type="number" placeholder="Počet bodů"
+          value={extraPoints} onChange={e => setExtraPoints(e.target.value)} />
+        <input className="input" placeholder="Důvod (volitelné)"
+          value={extraReason} onChange={e => setExtraReason(e.target.value)} />
+        <button className="btn" onClick={addExtraPoints}>Uložit</button>
+      </div>
     </div>
   )
 }
