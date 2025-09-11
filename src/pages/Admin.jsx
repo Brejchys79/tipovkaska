@@ -2,6 +2,14 @@ import React, { useEffect, useState } from 'react'
 import { db } from '../services/firebase'
 import { collection, getDocs, updateDoc, doc, addDoc } from 'firebase/firestore'
 
+function normalizeName(name) {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
 export default function AdminProtected() {
   const [authorized, setAuthorized] = useState(false)
   const [passwordInput, setPasswordInput] = useState('')
@@ -59,7 +67,12 @@ export default function AdminProtected() {
           else if ((tipA > tipB && realA > realB) || (tipA < tipB && realA < realB) || (tipA === tipB && realA === realB)) points += 3
         }
 
-        if (res.scorer && tip.scorer && res.scorer.toLowerCase() === tip.scorer.toLowerCase()) points += 3
+        if (res.scorer && tip.scorer) {
+          const validScorers = res.scorer.split(',').map(s => normalizeName(s))
+          const tipScorer = normalizeName(tip.scorer)
+          if (validScorers.includes(tipScorer)) points += 3
+        }
+
         if (m.isSpecial) points += 3
 
         await updateDoc(doc(db, 'tips', tip.id), { points })
