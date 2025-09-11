@@ -1,8 +1,6 @@
 import React, { useEffect, useState } from 'react'
 import { db } from '../services/firebase'
-import {
-  collection, getDocs, updateDoc, doc, addDoc, deleteDoc
-} from 'firebase/firestore'
+import { collection, getDocs, updateDoc, doc, addDoc } from 'firebase/firestore'
 
 export default function AdminProtected() {
   const [authorized, setAuthorized] = useState(false)
@@ -12,88 +10,96 @@ export default function AdminProtected() {
   const [results, setResults] = useState({})
   const [loading, setLoading] = useState(false)
 
-  const [users, setUsers] = useState([])
-  const [selectedUser, setSelectedUser] = useState('')
-  const [manualPointsList, setManualPointsList] = useState([])
-
+  // pro extra body
+  const [extraUser, setExtraUser] = useState('')
   const [extraPoints, setExtraPoints] = useState('')
   const [extraReason, setExtraReason] = useState('')
 
-  const ADMIN_PASSWORD = 'Dynamo79' // tvé heslo
+  const ADMIN_PASSWORD = 'Dynamo79' // nastav si své heslo
 
   const checkPassword = () => {
     if (passwordInput === ADMIN_PASSWORD) setAuthorized(true)
     else alert('Špatné heslo!')
   }
 
-  const loadMatches = async () => {
+  const load = async () => {
     const snap = await getDocs(collection(db, 'matches'))
     setMatches(snap.docs.map(d => ({ id: d.id, ...d.data() })))
   }
 
-  const loadUsers = async () => {
-    const snap = await getDocs(collection(db, 'users'))
-    setUsers(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-  }
-
-  const loadManualPoints = async () => {
-    const snap = await getDocs(collection(db, 'manualPoints'))
-    setManualPointsList(snap.docs.map(d => ({ id: d.id, ...d.data() })))
-  }
-
   useEffect(() => {
-    if (authorized) {
-      loadMatches()
-      loadUsers()
-      loadManualPoints()
-    }
+    if (authorized) load()
   }, [authorized])
 
-  // Výpočet zápasů – beze změny …
   const handleChange = (matchId, field, value) => {
-    setResults(prev => ({
-      ...prev,
-      [matchId]: { ...(prev[matchId] || {}), [field]: value }
-    }))
+    setResults(prev => ({ ...prev, [matchId]: { ...(prev[matchId] || {}), [field]: value } }))
   }
 
   const evaluateMatch = async (m) => {
-    /* ... stejný kód jako předtím ... */
+    const res = results[m.id]
+    if (!res || !res.score) { alert('Zadej výsledek!'); return }
+    setLoading(true)
+    try {
+      await updateDoc(doc(db, 'matches', m.id), {
+        result: res.score.trim(),
+        scorer: res.scorer ? res.scorer.trim() : null,
+        evaluated: true
+      })
+
+      const tipsSnap = await getDocs(collection(db, 'tips'))
+      const matchTips = tipsSnap.docs.map(d => ({ id: d.id, ...d.data() })).filter(t => t.matchId === m.id)
+
+      const ops = matchTips.map(async tip => {
+        let points = 0
+        const [realA, realB] = res.score.trim().split(':').map(Number)
+        const [tipA, tipB] = tip.score ? tip.score.split(':').map(Number) : [null, null]
+
+        if (tipA !== null && tipB !== null) {
+          if (tipA === realA && tipB === realB) points += 5
+          else if ((tipA > tipB && realA > realB) || (tipA < tipB && realA < realB) || (tipA === tipB && realA === realB)) points += 3
+        }
+
+        if (res.scorer && tip.scorer && res.scorer.toLowerCase() === tip.scorer.toLowerCase()) points += 3
+        if (m.isSpecial) points += 3
+
+        await updateDoc(doc(db, 'tips', tip.id), { points })
+      })
+
+      await Promise.all(ops)
+      alert(`Zápas "${m.teamA} vs ${m.teamB}" vyhodnocen!`)
+      await load()
+    } catch (err) {
+      console.error(err)
+      alert('Chyba při vyhodnocení: ' + err.message)
+    }
+    setLoading(false)
   }
 
-  const addManualPoints = async () => {
-    if (!selectedUser || !extraPoints) {
-      alert('Vyber uživatele a počet bodů'); return
+  const addExtraPoints = async () => {
+    if (!extraUser || !extraPoints) {
+      alert('Vyplň uživatele i body'); return
     }
     try {
       await addDoc(collection(db, 'manualPoints'), {
-        user: selectedUser,
+        user: extraUser.trim(),
         points: parseInt(extraPoints, 10),
         reason: extraReason.trim(),
         createdAt: new Date()
       })
-      alert(`Přidáno ${extraPoints} bodů uživateli ${selectedUser}`)
-      setSelectedUser('')
+      alert(`Přidáno ${extraPoints} bodů uživateli ${extraUser}`)
+      setExtraUser('')
       setExtraPoints('')
       setExtraReason('')
-      loadManualPoints()
     } catch (err) {
       console.error(err)
       alert('Chyba při ukládání: ' + err.message)
     }
   }
 
-  const deleteManualEntry = async (id) => {
-    if (window.confirm('Opravdu smazat toto zadání?')) {
-      await deleteDoc(doc(db, 'manualPoints', id))
-      loadManualPoints()
-    }
-  }
-
   if (!authorized) {
     return (
       <div className="card">
-        <h2>Admin přihlášení</h2>
+        <h2>Přihlášení do administrace</h2>
         <input
           type="password"
           className="input"
@@ -108,68 +114,38 @@ export default function AdminProtected() {
 
   return (
     <div className="grid">
-      {/* Sekce zápasů */}
       {matches.map(m => (
-        // ... původní vyhodnocovací UI komponenta ...
         <div key={m.id} className="card space-y">
-          {/* ... */}
+          <div className="row" style={{ justifyContent: 'space-between' }}>
+            <strong>{m.teamA} vs {m.teamB}</strong>
+            {m.isSpecial ? <span className="tag">Zápas kola</span> : null}
+          </div>
+          <div className="row">
+            <input className="input" placeholder="Výsledek např. 2:1"
+              value={results[m.id]?.score || m.result || ''}
+              onChange={e => handleChange(m.id, 'score', e.target.value)}
+              disabled={loading} />
+            <input className="input" placeholder="Střelec"
+              value={results[m.id]?.scorer || m.scorer || ''}
+              onChange={e => handleChange(m.id, 'scorer', e.target.value)}
+              disabled={loading} />
+            <button className="btn" onClick={() => evaluateMatch(m)} disabled={loading}>
+              {loading ? 'Vyhodnocuji…' : 'Vyhodnotit zápas'}
+            </button>
+          </div>
+          <p className="muted">Vyhodnocení provede výpočet bodů pro všechny tipy.</p>
         </div>
       ))}
 
-      {/* Sekce přidání manuálních bodů */}
-      <div className="card space-y">
-        <h3>Přidat body ručně</h3>
-        <select
-          className="input"
-          value={selectedUser}
-          onChange={e => setSelectedUser(e.target.value)}
-        >
-          <option value="">-- vyber uživatele --</option>
-          {users.map(u => (
-            <option key={u.id} value={u.displayName || u.id}>
-              {u.displayName || u.id}
-            </option>
-          ))}
-        </select>
-        <input
-          className="input"
-          type="number"
-          placeholder="Počet bodů"
-          value={extraPoints}
-          onChange={e => setExtraPoints(e.target.value)}
-        />
-        <input
-          className="input"
-          placeholder="Důvod (volitelné)"
-          value={extraReason}
-          onChange={e => setExtraReason(e.target.value)}
-        />
-        <button className="btn" onClick={addManualPoints}>Přidat body</button>
-      </div>
-
-      {/* Tabulka manuálních bodů */}
       <div className="card">
-        <h3>Manual Points History</h3>
-        <table className="table">
-          <thead>
-            <tr><th>Uživatel</th><th>Body</th><th>Důvod</th><th>Akce</th></tr>
-          </thead>
-          <tbody>
-            {manualPointsList.map(entry => (
-              <tr key={entry.id}>
-                <td>{entry.user}</td>
-                <td>{entry.points}</td>
-                <td>{entry.reason || '-'}</td>
-                <td>
-                  <button
-                    className="btn btn-red"
-                    onClick={() => deleteManualEntry(entry.id)}
-                  >Smazat</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <h3>Přidat body ručně</h3>
+        <input className="input" placeholder="Uživatel"
+          value={extraUser} onChange={e => setExtraUser(e.target.value)} />
+        <input className="input" type="number" placeholder="Počet bodů"
+          value={extraPoints} onChange={e => setExtraPoints(e.target.value)} />
+        <input className="input" placeholder="Důvod (volitelné)"
+          value={extraReason} onChange={e => setExtraReason(e.target.value)} />
+        <button className="btn" onClick={addExtraPoints}>Uložit</button>
       </div>
     </div>
   )
