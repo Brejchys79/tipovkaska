@@ -2,6 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react'
 import { db } from '../services/firebase'
 import { collection, getDocs } from 'firebase/firestore'
 
+function normalizeName(name) {
+  return name
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim()
+}
+
 function winnerFromScore(score) {
   if (!score || !score.includes(':')) return null
   const [a, b] = score.split(':').map(n => parseInt(n, 10))
@@ -45,8 +53,12 @@ export default function Leaderboard() {
           pts += 3
         }
       }
-      if (t.scorer && m.scorer && t.scorer.trim().toLowerCase() === m.scorer.trim().toLowerCase()) {
-        pts += 3
+      if (t.scorer && m.scorer) {
+        const validScorers = m.scorer.split(',').map(s => normalizeName(s))
+        const tipScorer = normalizeName(t.scorer)
+        if (validScorers.includes(tipScorer)) {
+          pts += 3
+        }
       }
       scoreMap[t.user] = (scoreMap[t.user] || 0) + pts
     }
