@@ -1,20 +1,29 @@
 import React, { useEffect, useState } from 'react'
 import { db } from '../services/firebase'
-import { collection, setDoc, doc, serverTimestamp, onSnapshot } from 'firebase/firestore'
+import {
+  collection,
+  setDoc,
+  doc,
+  getDoc,
+  serverTimestamp,
+  onSnapshot
+} from 'firebase/firestore'
 
 const PLAYERS = ['Kuba', 'Dominik', 'Michal', 'Ondra', 'Adéla', 'Šimon']
 
 export default function Home() {
   const [user, setUser] = useState(PLAYERS[0])
+  const [password, setPassword] = useState('')
   const [matches, setMatches] = useState([])
   const [tips, setTips] = useState({})
+  const [loading, setLoading] = useState(false)
 
   // Realtime listener pro zápasy – zobrazujeme jen nevyhodnocené
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'matches'), snapshot => {
       const list = snapshot.docs
         .map(d => ({ id: d.id, ...d.data() }))
-        .filter(m => !m.evaluated) // jen zápasy bez vyhodnocení
+        .filter(m => !m.evaluated)
         .sort((a, b) => {
           const da = a.matchDateTime ? new Date(a.matchDateTime).getTime() : 0
           const dbt = b.matchDateTime ? new Date(b.matchDateTime).getTime() : 0
@@ -26,33 +35,74 @@ export default function Home() {
   }, [])
 
   const handleChange = (matchId, field, value) => {
-    setTips(prev => ({ ...prev, [matchId]: { ...(prev[matchId] || {}), [field]: value }}))
+    setTips(prev => ({
+      ...prev,
+      [matchId]: { ...(prev[matchId] || {}), [field]: value }
+    }))
+  }
+
+  const verifyPassword = async () => {
+    try {
+      const userRef = doc(db, 'users', user)
+      const userSnap = await getDoc(userRef)
+      if (!userSnap.exists()) {
+        alert('Uživatel nebyl nalezen.')
+        return false
+      }
+
+      const data = userSnap.data()
+      const storedPassword = data.password
+
+      if (password !== storedPassword) {
+        alert('Špatné heslo!')
+        return false
+      }
+
+      return true
+    } catch (err) {
+      console.error(err)
+      alert('Chyba při ověřování hesla.')
+      return false
+    }
   }
 
   const saveAll = async () => {
+    setLoading(true)
+    const ok = await verifyPassword()
+    if (!ok) {
+      setLoading(false)
+      return
+    }
+
     const now = new Date()
-    const ops = Object.entries(tips).map(([matchId, t]) => {
-      const match = matches.find(m => m.id === matchId)
-      if (!match) return null
+    const ops = Object.entries(tips)
+      .map(([matchId, t]) => {
+        const match = matches.find(m => m.id === matchId)
+        if (!match) return null
+        if (match.matchDateTime && new Date(match.matchDateTime) <= now) {
+          return null
+        }
 
-      // pokud už zápas začal, tip se neuloží
-      if (match.matchDateTime && new Date(match.matchDateTime) <= now) {
-        return null
-      }
-
-      const tipId = `${user}_${matchId}` // upsert per user+match
-      return setDoc(doc(db, 'tips', tipId), {
-        user,
-        matchId,
-        score: (t.score || '').trim(),
-        scorer: (t.scorer || '').trim(),
-        createdAt: serverTimestamp()
-      }, { merge: true })
-    }).filter(Boolean)
+        const tipId = `${user}_${matchId}`
+        return setDoc(
+          doc(db, 'tips', tipId),
+          {
+            user,
+            matchId,
+            score: (t.score || '').trim(),
+            scorer: (t.scorer || '').trim(),
+            createdAt: serverTimestamp()
+          },
+          { merge: true }
+        )
+      })
+      .filter(Boolean)
 
     await Promise.all(ops)
     alert('Tipy uloženy!')
     setTips({})
+    setPassword('')
+    setLoading(false)
   }
 
   if (!matches.length) return <p>Načítám zápasy...</p>
@@ -65,15 +115,34 @@ export default function Home() {
         <div className="row">
           <label>Vyber jméno:</label>
           <select value={user} onChange={e => setUser(e.target.value)}>
-            {PLAYERS.map(p => <option key={p} value={p}>{p}</option>)}
+            {PLAYERS.map(p => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
           </select>
         </div>
-        <p className="muted">Zadej přesný výsledek (např. 2:1) a střelce.</p>
+
+        <div className="row">
+          <label>Zadej heslo:</label>
+          <input
+            type="password"
+            className="input"
+            placeholder="••••••••"
+            value={password}
+            onChange={e => setPassword(e.target.value)}
+          />
+        </div>
+
+        <p className="muted">
+          Zadej přesný výsledek (např. 2:1) a střelce.
+        </p>
       </div>
 
       <div className="grid">
         {matches.map(m => {
-          const isClosed = m.matchDateTime && new Date(m.matchDateTime) <= now
+          const isClosed =
+            m.matchDateTime && new Date(m.matchDateTime) <= now
           return (
             <div key={m.id} className="card">
               <div className="row" style={{ justifyContent: 'space-between' }}>
@@ -82,7 +151,10 @@ export default function Home() {
                 </strong>
               </div>
               <p className="muted">
-                Datum: {m.matchDateTime ? new Date(m.matchDateTime).toLocaleString('cs-CZ') : 'neuvedeno'}
+                Datum:{' '}
+                {m.matchDateTime
+                  ? new Date(m.matchDateTime).toLocaleString('cs-CZ')
+                  : 'neuvedeno'}
               </p>
               {isClosed ? (
                 <p className="muted">Tipování uzavřeno</p>
@@ -91,12 +163,16 @@ export default function Home() {
                   <input
                     className="input"
                     placeholder="Výsledek např. 2:1"
-                    onChange={e => handleChange(m.id, 'score', e.target.value)}
+                    onChange={e =>
+                      handleChange(m.id, 'score', e.target.value)
+                    }
                   />
                   <input
                     className="input"
                     placeholder="Střelec"
-                    onChange={e => handleChange(m.id, 'scorer', e.target.value)}
+                    onChange={e =>
+                      handleChange(m.id, 'scorer', e.target.value)
+                    }
                   />
                 </div>
               )}
@@ -105,7 +181,9 @@ export default function Home() {
         })}
       </div>
 
-      <button className="btn" onClick={saveAll}>Uložit tipy</button>
+      <button className="btn" onClick={saveAll} disabled={loading}>
+        {loading ? 'Ukládám...' : 'Uložit tipy'}
+      </button>
     </div>
   )
 }
