@@ -9,7 +9,7 @@ import {
   onSnapshot
 } from 'firebase/firestore'
 
-const PLAYERS = ['Kuba', 'Dominik', 'Michal', 'Ondra', 'Adéla', 'Šimon']
+const PLAYERS = ['Kuba', 'Dominik', 'Michal', 'Ondra', 'Adéla', 'Šimon', 'Metla']
 
 export default function Home() {
   const [user, setUser] = useState(PLAYERS[0])
